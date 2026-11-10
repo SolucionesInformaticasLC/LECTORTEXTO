@@ -471,7 +471,7 @@
 
         if (selectorVoces.options.length > 0) {
             // Seleccionar por defecto voz en español si existe
-            const vozEspanol = vocesProcesadas.find(v => v.lang.toLowerCase().startsWith('es'));
+            const vozEspanol = vocesProcesadas.find(v => v.lang.toLowerCase().startsWith('es-us'));
             if (vozEspanol) {
                 selectorVoces.value = vozEspanol.id;
             } else {
