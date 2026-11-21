@@ -1,0 +1,1006 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lector de Texto con Selección por Párrafos y Temas</title>
+    <!-- Librerías para lectura de PDF y DOCX en el navegador -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.21/mammoth.browser.min.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        /* Variables CSS para Temas Light y Dark */
+        :root {
+            --bg-body: #f4f7f6;
+            --bg-card: #ffffff;
+            --bg-input: #ffffff;
+            --bg-parrafo: #ffffff;
+            --bg-parrafo-hover: #f0fdfa;
+            --bg-parrafo-active: #e6fffa;
+            --border-color: #cbd5e1;
+            --text-main: #1e293b;
+            --text-sub: #475569;
+            --text-muted: #64748b;
+            --highlight-bg: rgba(250, 204, 21, 0.85);
+            --highlight-shadow: rgba(234, 179, 8, 0.5);
+            --word-active: #0f172a;
+            --btn-disabled-bg: #e2e8f0;
+            --btn-disabled-text: #94a3b8;
+        }
+
+        [data-theme="dark"] {
+            --bg-body: #0f172a;
+            --bg-card: #1e293b;
+            --bg-input: #0f172a;
+            --bg-parrafo: #1e293b;
+            --bg-parrafo-hover: #334155;
+            --bg-parrafo-active: #064e3b;
+            --border-color: #475569;
+            --text-main: #f8fafc;
+            --text-sub: #cbd5e1;
+            --text-muted: #94a3b8;
+            --highlight-bg: rgba(234, 179, 8, 0.85);
+            --highlight-shadow: rgba(234, 179, 8, 0.9);
+            --word-active: #ffffff;
+            --btn-disabled-bg: #334155;
+            --btn-disabled-text: #64748b;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: var(--bg-body);
+            color: var(--text-main);
+            min-height: 100vh;
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+
+        /* Layout Principal */
+        .app-contenedor {
+            display: flex;
+            gap: 20px;
+            max-width: 1100px;
+            margin: 0 auto;
+            background-color: var(--bg-card);
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+            padding: 20px;
+            height: calc(100vh - 40px);
+            max-height: 850px;
+            overflow: hidden;
+            transition: background-color 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        /* Sidebar Izquierda (Controles Fijos) */
+        .sidebar {
+            width: 310px;
+            flex-shrink: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            border-right: 1px solid var(--border-color);
+            padding-right: 20px;
+            overflow-y: auto;
+            transition: border-color 0.3s ease;
+        }
+
+        /* Área Principal de Texto */
+        .contenido-principal {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        h1 {
+            font-size: 20px;
+            margin: 0 0 10px 0;
+            color: var(--text-main);
+        }
+
+        .control-group {
+            margin-bottom: 5px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            font-size: 13px;
+            color: var(--text-sub);
+        }
+        .control-deslizante {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .control-deslizante input {
+            flex-grow: 1;
+        }
+        .valor-control {
+            font-weight: bold;
+            min-width: 35px;
+            text-align: right;
+            font-size: 13px;
+            color: var(--text-sub);
+        }
+        select {
+            padding: 10px;
+            font-size: 14px;
+            width: 100%;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background-color: var(--bg-input);
+            color: var(--text-main);
+            transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease;
+        }
+
+        /* Cuadros de texto y visor */
+        textarea, .visor-contenedor {
+            width: 100%;
+            flex-grow: 1;
+            font-size: 17px;
+            line-height: 1.8;
+            padding: 16px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            font-family: inherit;
+            box-sizing: border-box;
+            overflow-y: auto;
+            background-color: var(--bg-input);
+            color: var(--text-main);
+            transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease;
+        }
+
+        textarea {
+            resize: none;
+        }
+
+        /* Visor de Texto */
+        .visor-contenedor {
+            position: relative;
+        }
+
+        #marcador-amarillo {
+            position: absolute;
+            background-color: var(--highlight-bg);
+            border-radius: 4px;
+            box-shadow: 0 0 8px var(--highlight-shadow);
+            transition: all 0.15s ease-out;
+            pointer-events: none;
+            z-index: 1;
+            display: none;
+        }
+
+        /* Párrafos Interactivos */
+        .parrafo-bloque {
+            padding: 12px 16px;
+            margin-bottom: 12px;
+            border-radius: 8px;
+            background-color: var(--bg-parrafo);
+            border: 1px solid var(--border-color);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            position: relative;
+            z-index: 2;
+            color: var(--text-main);
+        }
+
+        .parrafo-bloque:hover {
+            border-color: #0ea5e9;
+            background-color: var(--bg-parrafo-hover);
+        }
+
+        .parrafo-bloque.en-lectura {
+            border-color: #10b981;
+            background-color: var(--bg-parrafo-active);
+        }
+
+        .palabra-span {
+            position: relative;
+            z-index: 3;
+            transition: color 0.1s ease;
+            border-radius: 3px;
+            padding: 1px 2px;
+        }
+
+        .palabra-span.activa {
+            color: var(--word-active);
+            font-weight: bold;
+        }
+
+        /* Botonera */
+        .reproductor-botones {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 5px;
+        }
+
+        .sub-titulo-botones {
+            font-size: 12px;
+            font-weight: bold;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-top: 5px;
+        }
+
+        .saltos-botones {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px;
+        }
+
+        button {
+            padding: 11px;
+            font-size: 14px;
+            font-weight: bold;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.2s, transform 0.1s;
+            color: white;
+        }
+        button:active {
+            transform: scale(0.98);
+        }
+
+        .btn-play { background-color: #16a34a; }
+        .btn-play:hover { background-color: #15803d; }
+        .btn-pause { background-color: #eab308; color: #1e293b; }
+        .btn-pause:hover { background-color: #ca8a04; }
+        .btn-stop { background-color: #dc2626; }
+        .btn-stop:hover { background-color: #b91c1c; }
+        .btn-saltos { background-color: #0284c7; }
+        .btn-saltos:hover { background-color: #0369a1; }
+        
+        button:disabled {
+            background-color: var(--btn-disabled-bg) !important;
+            color: var(--btn-disabled-text) !important;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .alerta-mensaje {
+            padding: 10px;
+            background-color: #f87171;
+            color: #7f1d1d;
+            border-radius: 6px;
+            font-size: 13px;
+            display: none;
+        }
+
+        .instruccion-click {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+            font-style: italic;
+        }
+
+        /* Responsividad */
+        @media (max-width: 768px) {
+            .app-contenedor {
+                flex-direction: column;
+                height: auto;
+                max-height: none;
+                overflow: visible;
+            }
+            .sidebar {
+                width: 100%;
+                border-right: none;
+                border-bottom: 1px solid var(--border-color);
+                padding-right: 0;
+                padding-bottom: 15px;
+            }
+            textarea, .visor-contenedor {
+                min-height: 350px;
+                height: 350px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div class="app-contenedor">
+    <!-- BARRA LATERAL IZQUIERDA (CONTROLES) -->
+    <div class="sidebar">
+        <h1>Lector por Párrafos</h1>
+
+        <div id="mensaje-alerta" class="alerta-mensaje"></div>
+
+        <!-- Selector de Tema -->
+        <div class="control-group">
+            <label for="selector-tema">Tema visual:</label>
+            <select id="selector-tema" onchange="cambiarTema(this.value)">
+                <option value="dark">Oscuro (Dark)</option>
+                <option value="light">Claro (Light)</option>
+            </select>
+        </div>
+
+        <!-- Carga de archivo -->
+        <div class="control-group">
+            <label for="input-archivo-txt">Cargar archivo:</label>
+            <input type="file" id="input-archivo-txt" accept=".txt,.pdf,.doc,.docx" onchange="cargarArchivo(event)" style="display: none;">
+            <button type="button" class="btn-saltos" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;" onclick="document.getElementById('input-archivo-txt').click()">
+                📂 Cargar (.pdf, .docx, .doc, .txt)
+            </button>
+        </div>
+        
+        <!-- Selector de Voces -->
+        <div class="control-group">
+            <label for="selector-voces">Voz del narrador:</label>
+            <select id="selector-voces">
+                <option value="">Cargando voces...</option>
+            </select>
+        </div>
+
+        <!-- Velocidad -->
+        <div class="control-group">
+            <label for="control-velocidad">Velocidad (Rate):</label>
+            <div class="control-deslizante">
+                <input type="range" id="control-velocidad" min="0.5" max="2" step="0.1" value="1.2">
+                <span id="valor-velocidad" class="valor-control">1.2x</span>
+            </div>
+        </div>
+
+        <!-- Tono -->
+        <div class="control-group">
+            <label for="control-tono">Tono (Pitch):</label>
+            <div class="control-deslizante">
+                <input type="range" id="control-tono" min="0.5" max="2" step="0.1" value="1">
+                <span id="valor-tono" class="valor-control">1.0x</span>
+            </div>
+        </div>
+
+        <!-- BOTONES PLAY Y DETENER -->
+        <div class="reproductor-botones">
+            <button id="btn-reproducir" class="btn-play" onclick="alternarPlayPausa()">Play</button>
+            <button id="btn-detener" class="btn-stop" onclick="detenerLectura()" disabled>Stop</button>
+        </div>
+
+        <!-- CONTROLES DE SALTO DE TIEMPO -->
+        <div class="sub-titulo-botones">Saltos de tiempo</div>
+        <div class="saltos-botones">
+            <button class="btn-saltos" onclick="saltarTiempo(-10)">-10s</button>
+            <button class="btn-saltos" onclick="saltarTiempo(10)">+10s</button>
+            <button class="btn-saltos" onclick="saltarTiempo(-20)">-20s</button>
+            <button class="btn-saltos" onclick="saltarTiempo(20)">+20s</button>
+        </div>
+    </div>
+
+    <!-- ÁREA PRINCIPAL DERECHA -->
+    <div class="contenido-principal">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+            <label for="texto-usuario" id="etiqueta-texto" style="margin-bottom: 0;">Texto a reproducir:</label>
+            <button id="btn-volver-editor" class="btn-saltos" style="display: none; padding: 4px 10px; font-size: 12px;" onclick="volverAEdicion()">✏️ Volver al editor</button>
+        </div>
+        
+        <div id="instruccion" class="instruccion-click" style="display: none;">Haz clic sobre cualquier párrafo o palabra para saltar la lectura inmediatamente a esa posición.</div>
+        
+        <textarea id="texto-usuario" placeholder="Escribe o pega aquí tu texto, o carga un archivo (.pdf, .docx, .doc, .txt). Al pulsar 'Play', el sistema reemplazará los saltos de línea por espacios simples, separará el texto en párrafos por cada punto (.) y comenzará a narrar cada párrafo consecutivamente..."></textarea>
+        
+        <div id="visor-contenedor" class="visor-contenedor" style="display: none;">
+            <div id="marcador-amarillo"></div>
+            <div id="visor-texto"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Configurar worker para PDF.js
+    if (window.pdfjsLib) {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+    }
+
+    const selectorTema = document.getElementById('selector-tema');
+    const selectorVoces = document.getElementById('selector-voces');
+    const controlVelocidad = document.getElementById('control-velocidad');
+    const valorVelocidad = document.getElementById('valor-velocidad');
+    const controlTono = document.getElementById('control-tono');
+    const valorTono = document.getElementById('valor-tono');
+    const textoUsuario = document.getElementById('texto-usuario');
+    const visorContenedor = document.getElementById('visor-contenedor');
+    const visorTexto = document.getElementById('visor-texto');
+    const marcadorAmarillo = document.getElementById('marcador-amarillo');
+    const mensajeAlerta = document.getElementById('mensaje-alerta');
+    const instruccion = document.getElementById('instruccion');
+    const btnVolverEditor = document.getElementById('btn-volver-editor');
+
+    const btnReproducir = document.getElementById('btn-reproducir');
+    const btnDetener = document.getElementById('btn-detener');
+    
+    let vocesProcesadas = [];
+    let palabrasArray = [];
+    let bloquesTexto = [];
+    let indiceBloqueActual = 0;
+    let indicePalabraActual = 0;
+    let estaReproduciendo = false;
+    let estaPausado = false;
+    let utteranceActual = null;
+    let keepAliveTimer = null;
+
+    // Inicialización del Tema
+    (function inicializarTema() {
+        const temaGuardado = localStorage.getItem('lector_tema') || 'dark';
+        document.documentElement.setAttribute('data-theme', temaGuardado);
+        selectorTema.value = temaGuardado;
+    })();
+
+    function cambiarTema(tema) {
+        document.documentElement.setAttribute('data-theme', tema);
+        localStorage.setItem('lector_tema', tema);
+    }
+
+    function mostrarMensaje(texto) {
+        mensajeAlerta.textContent = texto;
+        mensajeAlerta.style.display = 'block';
+        setTimeout(() => {
+            mensajeAlerta.style.display = 'none';
+        }, 4000);
+    }
+
+    // Carga de voces del navegador
+    function cargarVoces() {
+        if (!('speechSynthesis' in window)) return;
+
+        const vocesSistema = window.speechSynthesis.getVoices();
+        if (!vocesSistema || vocesSistema.length === 0) return;
+
+        vocesProcesadas = [];
+        selectorVoces.innerHTML = '';
+
+        vocesSistema.forEach((v) => {
+            const opcion = document.createElement('option');
+            opcion.value = v.name;
+            opcion.textContent = `${v.name} (${v.lang})`;
+            selectorVoces.appendChild(opcion);
+
+            vocesProcesadas.push({
+                id: v.name,
+                vozObj: v,
+                lang: v.lang
+            });
+        });
+
+        if (selectorVoces.options.length > 0) {
+            const vozEsUs = vocesProcesadas.find(v => {
+                const lang = (v.lang || '').replace('_', '-').toLowerCase();
+                return lang === 'es-us';
+            });
+            const vozEspanol = vozEsUs || vocesProcesadas.find(v => (v.lang || '').toLowerCase().startsWith('es'));
+
+            if (vozEspanol) {
+                selectorVoces.value = vozEspanol.id;
+            } else {
+                selectorVoces.selectedIndex = 0;
+            }
+        }
+    }
+
+    function inicializarVocesRobustas() {
+        if (!('speechSynthesis' in window)) {
+            mostrarMensaje("Tu navegador no soporta síntesis de voz (Web Speech API).");
+            return;
+        }
+
+        cargarVoces();
+
+        let intentos = 0;
+        const intervaloVoces = setInterval(() => {
+            intentos++;
+            if (window.speechSynthesis.getVoices().length > 0) {
+                cargarVoces();
+                clearInterval(intervaloVoces);
+            } else if (intentos > 25) {
+                clearInterval(intervaloVoces);
+            }
+        }, 300);
+
+        if (window.speechSynthesis.onvoiceschanged !== undefined) {
+            window.speechSynthesis.onvoiceschanged = cargarVoces;
+        }
+    }
+
+    // Carga de archivos (.txt, .pdf, .docx, .doc)
+    async function cargarArchivo(event) {
+        const archivo = event.target.files[0];
+        if (!archivo) return;
+
+        volverAEdicion();
+        mostrarMensaje(`Cargando archivo: ${archivo.name}...`);
+        const nombre = archivo.name.toLowerCase();
+
+        try {
+            if (nombre.endsWith('.txt')) {
+                const lector = new FileReader();
+                lector.onload = function(e) {
+                    textoUsuario.value = e.target.result;
+                    mostrarMensaje("Archivo .txt cargado con éxito.");
+                };
+                lector.readAsText(archivo, 'UTF-8');
+            } 
+            else if (nombre.endsWith('.pdf')) {
+                if (!window.pdfjsLib) {
+                    mostrarMensaje("La librería PDF.js no está disponible.");
+                    return;
+                }
+                const buffer = await archivo.arrayBuffer();
+                const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+                let textoCompleto = '';
+                
+                for (let i = 1; i <= pdf.numPages; i++) {
+                    const pagina = await pdf.getPage(i);
+                    const contenido = await pagina.getTextContent();
+                    const textoPagina = contenido.items.map(item => item.str).join(' ');
+                    textoCompleto += textoPagina + '\n\n';
+                }
+                textoUsuario.value = textoCompleto.trim();
+                mostrarMensaje(`PDF cargado con éxito (${pdf.numPages} páginas).`);
+            } 
+            else if (nombre.endsWith('.docx')) {
+                if (!window.mammoth) {
+                    mostrarMensaje("La librería Mammoth no está disponible.");
+                    return;
+                }
+                const buffer = await archivo.arrayBuffer();
+                const resultado = await mammoth.extractRawText({ arrayBuffer: buffer });
+                textoUsuario.value = resultado.value;
+                mostrarMensaje("Archivo .docx cargado con éxito.");
+            } 
+            else if (nombre.endsWith('.doc')) {
+                const buffer = await archivo.arrayBuffer();
+                const bytes = new Uint8Array(buffer);
+                let textoExtraido = '';
+                let palabraTemporal = '';
+
+                for (let i = 0; i < bytes.length; i++) {
+                    const charCode = bytes[i];
+                    if ((charCode >= 32 && charCode <= 126) || charCode === 10 || charCode === 13 || charCode >= 192) {
+                        palabraTemporal += String.fromCharCode(charCode);
+                    } else {
+                        if (palabraTemporal.length > 3) {
+                            textoExtraido += palabraTemporal + ' ';
+                        }
+                        palabraTemporal = '';
+                    }
+                }
+                textoUsuario.value = textoExtraido.replace(/\s+/g, ' ').trim();
+                mostrarMensaje("Archivo .doc antiguo procesado.");
+            } else {
+                mostrarMensaje("Formato no compatible. Sube .txt, .pdf, .doc o .docx.");
+            }
+        } catch (error) {
+            console.error("Error al cargar archivo:", error);
+            mostrarMensaje("Error al procesar el archivo seleccionado.");
+        } finally {
+            event.target.value = '';
+        }
+    }
+
+    window.addEventListener('load', () => {
+        if ('speechSynthesis' in window) {
+            window.speechSynthesis.cancel();
+        }
+        inicializarVocesRobustas();
+    });
+
+    /**
+     * FORMATEO PRINCIPAL REQUERIDO:
+     * 1. Reemplaza todos los saltos de línea por un espacio simple.
+     * 2. Normaliza espacios consecutivos a un solo espacio.
+     * 3. Separa el texto resultante en párrafos por cada punto (.).
+     */
+    function formatearYSepararEnParrafos(textoCrudo) {
+        // Paso 1: Reemplazar saltos de línea (\r\n, \r, \n) por espacio simple
+        const sinSaltosDeLinea = textoCrudo.replace(/[\r\n]+/g, ' ');
+
+        // Normalizar múltiples espacios continuos a un único espacio
+        const textoLimpio = sinSaltosDeLinea.replace(/\s+/g, ' ').trim();
+
+        if (!textoLimpio) return [];
+
+        // Paso 2: Separar en párrafos por cada punto '.'
+        const coincidencias = textoLimpio.match(/[^.]*\./g);
+        const parrafos = [];
+
+        if (coincidencias) {
+            coincidencias.forEach(parr => {
+                const limpio = parr.trim();
+                if (limpio.length > 0) {
+                    parrafos.push(limpio);
+                }
+            });
+        }
+
+        // Si existe texto residual al final que no termina en punto
+        const ultimoPunto = textoLimpio.lastIndexOf('.');
+        if (ultimoPunto === -1) {
+            parrafos.push(textoLimpio);
+        } else if (ultimoPunto < textoLimpio.length - 1) {
+            const residuo = textoLimpio.substring(ultimoPunto + 1).trim();
+            if (residuo.length > 0) {
+                parrafos.push(residuo);
+            }
+        }
+
+        return parrafos;
+    }
+
+    // Renderiza el visor visual interactivo
+    function renderizarVisorTexto() {
+        visorTexto.innerHTML = '';
+        
+        bloquesTexto.forEach((bloque) => {
+            const divParrafo = document.createElement('div');
+            divParrafo.className = 'parrafo-bloque';
+            divParrafo.id = `parrafo-${bloque.id}`;
+            
+            // Clic en cualquier punto del párrafo
+            divParrafo.addEventListener('click', (e) => {
+                if (e.target && e.target.classList.contains('palabra-span')) {
+                    const globalIdx = parseInt(e.target.dataset.index, 10);
+                    const offset = globalIdx - bloque.startWordIndex;
+                    hacerClicEnParrafo(bloque.id, offset);
+                } else {
+                    hacerClicEnParrafo(bloque.id, 0);
+                }
+            });
+
+            bloque.palabras.forEach((palabra, pIdx) => {
+                const globalWordIdx = bloque.startWordIndex + pIdx;
+                
+                const span = document.createElement('span');
+                span.id = `palabra-${globalWordIdx}`;
+                span.className = 'palabra-span';
+                span.dataset.index = globalWordIdx;
+                span.textContent = palabra;
+                
+                divParrafo.appendChild(span);
+                divParrafo.appendChild(document.createTextNode(' '));
+            });
+
+            visorTexto.appendChild(divParrafo);
+        });
+    }
+
+    // Resaltado de palabra con auto-scroll al centro
+    function resaltarPalabra(indiceGlobal) {
+        indicePalabraActual = indiceGlobal;
+
+        const spanPrevio = visorTexto.querySelector('.palabra-span.activa');
+        if (spanPrevio) {
+            spanPrevio.classList.remove('activa');
+        }
+
+        const spanActual = document.getElementById(`palabra-${indiceGlobal}`);
+        if (spanActual) {
+            spanActual.classList.add('activa');
+
+            const rectSpan = spanActual.getBoundingClientRect();
+            const rectContenedor = visorContenedor.getBoundingClientRect();
+
+            const topRelativo = rectSpan.top - rectContenedor.top + visorContenedor.scrollTop;
+            const leftRelativo = rectSpan.left - rectContenedor.left + visorContenedor.scrollLeft;
+
+            marcadorAmarillo.style.display = 'block';
+            marcadorAmarillo.style.width = `${rectSpan.width + 4}px`;
+            marcadorAmarillo.style.height = `${rectSpan.height}px`;
+            marcadorAmarillo.style.top = `${topRelativo}px`;
+            marcadorAmarillo.style.left = `${leftRelativo - 2}px`;
+
+            const centroVisor = visorContenedor.clientHeight / 2;
+            visorContenedor.scrollTo({
+                top: topRelativo - centroVisor + (rectSpan.height / 2),
+                behavior: 'smooth'
+            });
+        } else {
+            marcadorAmarillo.style.display = 'none';
+        }
+    }
+
+    function resaltarParrafoActivo(indiceBloque) {
+        const parrafoPrevio = visorTexto.querySelector('.parrafo-bloque.en-lectura');
+        if (parrafoPrevio) {
+            parrafoPrevio.classList.remove('en-lectura');
+        }
+        const parrafoActual = document.getElementById(`parrafo-${indiceBloque}`);
+        if (parrafoActual) {
+            parrafoActual.classList.add('en-lectura');
+        }
+    }
+
+    // Reproducción de cada párrafo individual
+    function reproducirBloque(indexBloque, startWordOffset = 0) {
+        if (indexBloque < 0 || indexBloque >= bloquesTexto.length) {
+            detenerLectura();
+            mostrarMensaje("Lectura finalizada.");
+            return;
+        }
+
+        indiceBloqueActual = indexBloque;
+        const bloque = bloquesTexto[indexBloque];
+
+        resaltarParrafoActivo(indexBloque);
+        resaltarPalabra(bloque.startWordIndex + startWordOffset);
+
+        if ('speechSynthesis' in window) {
+            window.speechSynthesis.cancel();
+        }
+
+        // Determinar texto del párrafo a leer
+        let textoALeer = bloque.texto;
+        if (startWordOffset > 0 && startWordOffset < bloque.palabras.length) {
+            textoALeer = bloque.palabras.slice(startWordOffset).join(' ');
+        }
+
+        utteranceActual = new SpeechSynthesisUtterance(textoALeer);
+
+        // Asignar voz configurada
+        const nombreVoz = selectorVoces.value;
+        const vozEncontrada = vocesProcesadas.find(v => v.id === nombreVoz);
+        if (vozEncontrada && vozEncontrada.vozObj) {
+            utteranceActual.voice = vozEncontrada.vozObj;
+            utteranceActual.lang = vozEncontrada.vozObj.lang;
+        }
+
+        utteranceActual.rate = parseFloat(controlVelocidad.value) || 1.2;
+        utteranceActual.pitch = parseFloat(controlTono.value) || 1.0;
+
+        // Mapeo de posiciones de palabras para sincronización precisa
+        let offsets = [];
+        let regexPalabra = /\S+/g;
+        let match;
+        while ((match = regexPalabra.exec(textoALeer)) !== null) {
+            offsets.push({
+                wordIdx: startWordOffset + offsets.length,
+                start: match.index,
+                end: match.index + match[0].length
+            });
+        }
+
+        utteranceActual.onboundary = function(event) {
+            if (!estaReproduciendo || estaPausado) return;
+            if (event.name === 'word' || event.charIndex !== undefined) {
+                const charIdx = event.charIndex;
+                let target = offsets.find(o => charIdx >= o.start && charIdx < o.end);
+                if (!target) {
+                    target = offsets.find(o => o.start >= charIdx);
+                }
+                if (target) {
+                    resaltarPalabra(bloque.startWordIndex + target.wordIdx);
+                }
+            }
+        };
+
+        // Al finalizar el párrafo, continuar con el siguiente
+        utteranceActual.onend = function() {
+            if (!estaReproduciendo || estaPausado) return;
+            
+            if (indiceBloqueActual + 1 < bloquesTexto.length) {
+                indiceBloqueActual++;
+                reproducirBloque(indiceBloqueActual, 0);
+            } else {
+                detenerLectura();
+                mostrarMensaje("Lectura completada.");
+            }
+        };
+
+        utteranceActual.onerror = function(event) {
+            if (event.error === 'interrupted' || event.error === 'canceled') return;
+            console.warn("SpeechSynthesis event error:", event.error);
+        };
+
+        window.speechSynthesis.speak(utteranceActual);
+        iniciarKeepAlive();
+    }
+
+    // Prevención del congelamiento del SpeechSynthesis en navegadores Chromium
+    function iniciarKeepAlive() {
+        clearInterval(keepAliveTimer);
+        keepAliveTimer = setInterval(() => {
+            if (window.speechSynthesis.speaking && !window.speechSynthesis.paused) {
+                window.speechSynthesis.pause();
+                window.speechSynthesis.resume();
+            }
+        }, 12000);
+    }
+
+    function actualizarEstadoBotonPlayPausa() {
+        if (!estaReproduciendo) {
+            btnReproducir.textContent = 'Play';
+            btnReproducir.className = 'btn-play';
+            btnDetener.disabled = true;
+        } else if (estaPausado) {
+            btnReproducir.textContent = 'Reanudar';
+            btnReproducir.className = 'btn-play';
+            btnDetener.disabled = false;
+        } else {
+            btnReproducir.textContent = 'Pausa';
+            btnReproducir.className = 'btn-pause';
+            btnDetener.disabled = false;
+        }
+    }
+
+    // Acción al pulsar Play / Pausa
+    function alternarPlayPausa() {
+        if (!estaReproduciendo) {
+            const textoCrudo = textoUsuario.value.trim();
+            if (textoCrudo === "") {
+                mostrarMensaje("Por favor, introduce o pega un texto para reproducir.");
+                return;
+            }
+
+            if (vocesProcesadas.length === 0) {
+                cargarVoces();
+            }
+
+            // 1. Formateo y separación en párrafos por punto
+            const parrafos = formatearYSepararEnParrafos(textoCrudo);
+            if (parrafos.length === 0) {
+                mostrarMensaje("El texto ingresado no contiene párrafos legibles.");
+                return;
+            }
+
+            // Construir estructura de bloques
+            palabrasArray = [];
+            bloquesTexto = [];
+            let indicePalabraGlobal = 0;
+
+            parrafos.forEach((parrTexto, idx) => {
+                const palabrasParr = parrTexto.split(' ').filter(Boolean);
+                bloquesTexto.push({
+                    id: idx,
+                    texto: parrTexto,
+                    palabras: palabrasParr,
+                    startWordIndex: indicePalabraGlobal,
+                    wordCount: palabrasParr.length
+                });
+                palabrasArray.push(...palabrasParr);
+                indicePalabraGlobal += palabrasParr.length;
+            });
+
+            // Reflejar texto estructurado en el textarea
+            textoUsuario.value = parrafos.join('\n\n');
+
+            indiceBloqueActual = 0;
+            indicePalabraActual = 0;
+
+            // Mostrar el visor de párrafos
+            textoUsuario.style.display = 'none';
+            visorContenedor.style.display = 'block';
+            instruccion.style.display = 'block';
+            btnVolverEditor.style.display = 'inline-flex';
+
+            renderizarVisorTexto();
+
+            estaReproduciendo = true;
+            estaPausado = false;
+            actualizarEstadoBotonPlayPausa();
+
+            // 2. Comenzar lectura en voz párrafo por párrafo
+            reproducirBloque(0, 0);
+
+        } else if (estaPausado) {
+            window.speechSynthesis.resume();
+            estaPausado = false;
+            actualizarEstadoBotonPlayPausa();
+        } else {
+            window.speechSynthesis.pause();
+            estaPausado = true;
+            actualizarEstadoBotonPlayPausa();
+        }
+    }
+
+    // Clic directo en un párrafo o palabra del visor
+    function hacerClicEnParrafo(indexBloque, wordOffset = 0) {
+        if (indexBloque < 0 || indexBloque >= bloquesTexto.length) return;
+
+        if ('speechSynthesis' in window) {
+            window.speechSynthesis.cancel();
+        }
+
+        indiceBloqueActual = indexBloque;
+        indicePalabraActual = bloquesTexto[indexBloque].startWordIndex + wordOffset;
+        estaReproduciendo = true;
+        estaPausado = false;
+        actualizarEstadoBotonPlayPausa();
+
+        reproducirBloque(indiceBloqueActual, wordOffset);
+    }
+
+    // Detener la lectura
+    function detenerLectura() {
+        if ('speechSynthesis' in window) {
+            window.speechSynthesis.cancel();
+        }
+        clearInterval(keepAliveTimer);
+        estaReproduciendo = false;
+        estaPausado = false;
+        utteranceActual = null;
+        
+        actualizarEstadoBotonPlayPausa();
+        
+        if (marcadorAmarillo) marcadorAmarillo.style.display = 'none';
+        const activa = visorTexto.querySelector('.palabra-span.activa');
+        if (activa) activa.classList.remove('activa');
+        const parrafoActivo = visorTexto.querySelector('.parrafo-bloque.en-lectura');
+        if (parrafoActivo) parrafoActivo.classList.remove('en-lectura');
+    }
+
+    // Volver a la vista del cuadro de texto editable
+    function volverAEdicion() {
+        detenerLectura();
+        visorContenedor.style.display = 'none';
+        instruccion.style.display = 'none';
+        btnVolverEditor.style.display = 'none';
+        textoUsuario.style.display = 'block';
+        textoUsuario.focus();
+    }
+
+    // Saltos relativos de tiempo (+10s, -10s, etc.)
+    function saltarTiempo(segundos) {
+        if (bloquesTexto.length === 0 || palabrasArray.length === 0) {
+            mostrarMensaje("Primero inicia la reproducción o introduce un texto.");
+            return;
+        }
+
+        const velocidad = parseFloat(controlVelocidad.value) || 1.2;
+        const palabrasPorSegundo = 2.5 * velocidad;
+        const deltaPalabras = Math.round(segundos * palabrasPorSegundo);
+        
+        let nuevoIndice = indicePalabraActual + deltaPalabras;
+        nuevoIndice = Math.max(0, Math.min(palabrasArray.length - 1, nuevoIndice));
+
+        let bloqueDestino = bloquesTexto.find(b => 
+            nuevoIndice >= b.startWordIndex && nuevoIndice < (b.startWordIndex + b.wordCount)
+        );
+
+        if (!bloqueDestino) {
+            bloqueDestino = nuevoIndice >= palabrasArray.length - 1 ? bloquesTexto[bloquesTexto.length - 1] : bloquesTexto[0];
+        }
+
+        const wordOffset = Math.max(0, nuevoIndice - bloqueDestino.startWordIndex);
+        indiceBloqueActual = bloqueDestino.id;
+        indicePalabraActual = nuevoIndice;
+
+        if (estaReproduciendo) {
+            estaPausado = false;
+            actualizarEstadoBotonPlayPausa();
+            reproducirBloque(indiceBloqueActual, wordOffset);
+        } else {
+            resaltarParrafoActivo(indiceBloqueActual);
+            resaltarPalabra(indicePalabraActual);
+        }
+    }
+
+    // Actualización de sliders de velocidad y tono
+    controlVelocidad.addEventListener('input', () => {
+        valorVelocidad.textContent = parseFloat(controlVelocidad.value).toFixed(1) + 'x';
+        if (estaReproduciendo && !estaPausado) {
+            const wordOffset = Math.max(0, indicePalabraActual - bloquesTexto[indiceBloqueActual].startWordIndex);
+            reproducirBloque(indiceBloqueActual, wordOffset);
+        }
+    });
+
+    controlTono.addEventListener('input', () => {
+        valorTono.textContent = parseFloat(controlTono.value).toFixed(1) + 'x';
+        if (estaReproduciendo && !estaPausado) {
+            const wordOffset = Math.max(0, indicePalabraActual - bloquesTexto[indiceBloqueActual].startWordIndex);
+            reproducirBloque(indiceBloqueActual, wordOffset);
+        }
+    });
+
+    selectorVoces.addEventListener('change', () => {
+        if (estaReproduciendo && !estaPausado) {
+            const wordOffset = Math.max(0, indicePalabraActual - bloquesTexto[indiceBloqueActual].startWordIndex);
+            reproducirBloque(indiceBloqueActual, wordOffset);
+        }
+    });
+</script>
+</body>
+</html>
