@@ -1,0 +1,1037 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lector de Texto con Selección por Párrafos</title>
+    <!-- Librerías para lectura de PDF y DOCX en el navegador -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+    <style>
+        /* Variables de Tema: Oscuro (Por defecto) y Claro */
+        :root, [data-theme="dark"] {
+            --bg-body: #121417;
+            --bg-container: #1e2126;
+            --bg-input: #272b32;
+            --bg-visor: #181a1f;
+            --bg-parrafo: #22262e;
+            --bg-parrafo-hover: #2b323e;
+            --bg-parrafo-activo: #1c3627;
+            --border-color: #363b44;
+            --border-parrafo-hover: #17a2b8;
+            --border-parrafo-activo: #28a745;
+            --text-main: #f1f3f5;
+            --text-secondary: #adb5bd;
+            --text-muted: #868e96;
+            --marcador-bg: rgba(255, 213, 0, 0.35);
+            --marcador-shadow: rgba(255, 213, 0, 0.5);
+            --palabra-activa-color: #ffffff;
+            --btn-disabled-bg: #343a40;
+            --btn-disabled-text: #6c757d;
+            --shadow-container: 0 8px 25px rgba(0, 0, 0, 0.45);
+        }
+
+        [data-theme="light"] {
+            --bg-body: #f4f7f6;
+            --bg-container: #ffffff;
+            --bg-input: #fafafa;
+            --bg-visor: #f8f9fa;
+            --bg-parrafo: #ffffff;
+            --bg-parrafo-hover: #f0fdfa;
+            --bg-parrafo-activo: #f0fff4;
+            --border-color: #dcdcdc;
+            --border-parrafo-hover: #17a2b8;
+            --border-parrafo-activo: #28a745;
+            --text-main: #212529;
+            --text-secondary: #495057;
+            --text-muted: #6c757d;
+            --marcador-bg: rgba(255, 235, 59, 0.85);
+            --marcador-shadow: rgba(255, 235, 59, 0.9);
+            --palabra-activa-color: #000000;
+            --btn-disabled-bg: #e2e6ea;
+            --btn-disabled-text: #868e96;
+            --shadow-container: 0 4px 15px rgba(0, 0, 0, 0.08);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: var(--bg-body);
+            color: var(--text-main);
+            min-height: 100vh;
+            transition: background-color 0.25s ease, color 0.25s ease;
+        }
+
+        /* Layout Principal con Barra Lateral */
+        .app-contenedor {
+            display: flex;
+            gap: 20px;
+            max-width: 1150px;
+            margin: 0 auto;
+            background-color: var(--bg-container);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            box-shadow: var(--shadow-container);
+            padding: 20px;
+            height: calc(100vh - 40px);
+            max-height: 860px;
+            overflow: hidden;
+            transition: background-color 0.25s ease, border-color 0.25s ease;
+        }
+
+        /* Sidebar Izquierda (Controles Fijos) */
+        .sidebar {
+            width: 315px;
+            flex-shrink: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            border-right: 1px solid var(--border-color);
+            padding-right: 20px;
+            overflow-y: auto;
+        }
+
+        /* Área Principal de Texto (Derecha con Scroll Vertical) */
+        .contenido-principal {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        h1 {
+            font-size: 20px;
+            margin: 0 0 4px 0;
+            color: var(--text-main);
+        }
+
+        .control-group {
+            margin-bottom: 2px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .control-deslizante {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .control-deslizante input[type="range"] {
+            flex-grow: 1;
+            accent-color: #17a2b8;
+            cursor: pointer;
+        }
+
+        .valor-control {
+            font-weight: bold;
+            min-width: 38px;
+            text-align: right;
+            font-size: 13px;
+            color: var(--text-main);
+        }
+
+        select {
+            padding: 9px 10px;
+            font-size: 13.5px;
+            width: 100%;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background-color: var(--bg-input);
+            color: var(--text-main);
+            outline: none;
+            cursor: pointer;
+        }
+
+        /* Botón de Carga de Archivos */
+        .btn-subir-archivo {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            width: 100%;
+            padding: 10px;
+            background-color: var(--bg-input);
+            border: 1px dashed var(--border-parrafo-hover);
+            border-radius: 6px;
+            color: var(--text-main);
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.2s ease;
+        }
+
+        .btn-subir-archivo:hover {
+            background-color: var(--bg-parrafo-hover);
+            border-style: solid;
+        }
+
+        /* Cuadro de texto y Visor con Scroll Independiente */
+        textarea, .visor-contenedor {
+            width: 100%;
+            flex-grow: 1;
+            font-size: 17px;
+            line-height: 1.8;
+            padding: 16px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            font-family: inherit;
+            overflow-y: auto;
+            transition: background-color 0.25s ease, color 0.25s ease, border-color 0.25s ease;
+        }
+
+        textarea {
+            resize: none;
+            background-color: var(--bg-input);
+            color: var(--text-main);
+            outline: none;
+        }
+
+        textarea:focus {
+            border-color: #17a2b8;
+        }
+
+        /* Visor de Texto Interactivo */
+        .visor-contenedor {
+            position: relative;
+            background-color: var(--bg-visor);
+        }
+
+        #marcador-amarillo {
+            position: absolute;
+            background-color: var(--marcador-bg);
+            border-radius: 4px;
+            box-shadow: 0 0 6px var(--marcador-shadow);
+            transition: all 0.15s ease-out;
+            pointer-events: none;
+            z-index: 1;
+            display: none;
+        }
+
+        /* Bloques de Párrafos Interactivos */
+        .parrafo-bloque {
+            padding: 10px 14px;
+            margin-bottom: 10px;
+            border-radius: 8px;
+            background-color: var(--bg-parrafo);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            position: relative;
+            z-index: 2;
+        }
+
+        .parrafo-bloque:hover {
+            border-color: var(--border-parrafo-hover);
+            background-color: var(--bg-parrafo-hover);
+        }
+
+        .parrafo-bloque.en-lectura {
+            border-color: var(--border-parrafo-activo);
+            background-color: var(--bg-parrafo-activo);
+        }
+
+        .palabra-span {
+            position: relative;
+            z-index: 3;
+            transition: color 0.12s ease;
+            border-radius: 3px;
+            padding: 1px 2px;
+        }
+
+        .palabra-span.activa {
+            color: var(--palabra-activa-color);
+            font-weight: bold;
+        }
+
+        /* Agrupación de Botones en Sidebar */
+        .reproductor-botones {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 2px;
+        }
+
+        .sub-titulo-botones {
+            font-size: 11px;
+            font-weight: bold;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            margin-top: 2px;
+        }
+
+        /* Saltos de tiempo */
+        .saltos-botones {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px;
+        }
+
+        button {
+            padding: 11px;
+            font-size: 14px;
+            font-weight: bold;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.2s, transform 0.1s;
+            color: white;
+        }
+
+        button:active {
+            transform: scale(0.98);
+        }
+
+        .btn-play { background-color: #28a745; }
+        .btn-play:hover { background-color: #218838; }
+        .btn-pause { background-color: #ffc107; color: #212529; }
+        .btn-pause:hover { background-color: #e0a800; }
+        .btn-stop { background-color: #dc3545; }
+        .btn-stop:hover { background-color: #bd2130; }
+        .btn-saltos { background-color: #17a2b8; }
+        .btn-saltos:hover { background-color: #138496; }
+
+        button:disabled {
+            background-color: var(--btn-disabled-bg) !important;
+            color: var(--btn-disabled-text) !important;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .alerta-mensaje {
+            padding: 9px 12px;
+            background-color: #2c1618;
+            border: 1px solid #842029;
+            color: #ea868f;
+            border-radius: 6px;
+            font-size: 12.5px;
+            display: none;
+        }
+
+        [data-theme="light"] .alerta-mensaje {
+            background-color: #f8d7da;
+            border-color: #f5c2c7;
+            color: #842029;
+        }
+
+        /* Cabecera del área de texto con el indicador de progreso */
+        .header-texto {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .indicador-progreso {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-main);
+            background-color: var(--bg-input);
+            border: 1px solid var(--border-color);
+            padding: 5px 12px;
+            border-radius: 20px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.25s ease;
+        }
+
+        .indicador-progreso span.porcentaje {
+            color: #17a2b8;
+            font-weight: bold;
+        }
+
+        .instruccion-click {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+            font-style: italic;
+        }
+
+        /* Responsividad para pantallas móviles */
+        @media (max-width: 768px) {
+            .app-contenedor {
+                flex-direction: column;
+                height: auto;
+                max-height: none;
+                overflow: visible;
+            }
+            .sidebar {
+                width: 100%;
+                border-right: none;
+                border-bottom: 1px solid var(--border-color);
+                padding-right: 0;
+                padding-bottom: 15px;
+            }
+            textarea, .visor-contenedor {
+                min-height: 360px;
+                height: 360px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div class="app-contenedor">
+    <!-- BARRA LATERAL IZQUIERDA (CONTROLES) -->
+    <div class="sidebar">
+        <h1>Lector por Párrafos</h1>
+
+        <div id="mensaje-alerta" class="alerta-mensaje"></div>
+
+        <!-- Selector de Tema Visual -->
+        <div class="control-group">
+            <label for="selector-tema">Tema visual:</label>
+            <select id="selector-tema">
+                <option value="dark" selected>Oscuro (Dark)</option>
+                <option value="light">Claro (Light)</option>
+            </select>
+        </div>
+
+        <!-- Carga de Archivos (.pdf, .docx, .doc, .txt) -->
+        <div class="control-group">
+            <label for="input-archivo">Cargar documento:</label>
+            <label for="input-archivo" class="btn-subir-archivo">
+                <span>📂 Subir .txt, .pdf, .doc, .docx</span>
+            </label>
+            <input type="file" id="input-archivo" accept=".txt,.pdf,.doc,.docx" style="display: none;">
+        </div>
+
+        <!-- Selector de Voces -->
+        <div class="control-group">
+            <label for="selector-voces">Voz del narrador:</label>
+            <select id="selector-voces">
+                <option value="">Cargando voces...</option>
+            </select>
+        </div>
+
+        <!-- Velocidad -->
+        <div class="control-group">
+            <label for="control-velocidad">Velocidad (Rate):</label>
+            <div class="control-deslizante">
+                <input type="range" id="control-velocidad" min="0.5" max="2" step="0.1" value="1.2">
+                <span id="valor-velocidad" class="valor-control">1.2x</span>
+            </div>
+        </div>
+
+        <!-- Tono -->
+        <div class="control-group">
+            <label for="control-tono">Tono (Pitch):</label>
+            <div class="control-deslizante">
+                <input type="range" id="control-tono" min="0.5" max="2" step="0.1" value="1">
+                <span id="valor-tono" class="valor-control">1.0x</span>
+            </div>
+        </div>
+
+        <!-- CONTROLES PRINCIPALES -->
+        <div class="reproductor-botones">
+            <button id="btn-reproducir" class="btn-play" onclick="alternarPlayPausa()">Play</button>
+            <button id="btn-detener" class="btn-stop" onclick="detenerLectura()" disabled>Stop</button>
+        </div>
+
+        <!-- CONTROLES DE SALTO DE TIEMPO -->
+        <div class="sub-titulo-botones">Saltos de tiempo</div>
+        <div class="saltos-botones">
+            <button class="btn-saltos" onclick="saltarTiempo(-10)">-10s</button>
+            <button class="btn-saltos" onclick="saltarTiempo(10)">+10s</button>
+            <button class="btn-saltos" onclick="saltarTiempo(-20)">-20s</button>
+            <button class="btn-saltos" onclick="saltarTiempo(20)">+20s</button>
+        </div>
+    </div>
+
+    <!-- ÁREA PRINCIPAL DERECHA (TEXTO AMPLIO) -->
+    <div class="contenido-principal">
+        <div class="header-texto">
+            <label for="texto-usuario" id="etiqueta-texto" style="margin-bottom: 0;">Texto a reproducir:</label>
+            <div id="indicador-progreso" class="indicador-progreso" title="Progreso de lectura">
+                Párrafo <span id="prog-actual">0</span> de <span id="prog-total">0</span> • <span id="prog-porcentaje" class="porcentaje">0%</span>
+            </div>
+        </div>
+        <div id="instruccion" class="instruccion-click" style="display: none;">Haz clic en cualquier párrafo para iniciar la lectura desde ahí.</div>
+
+        <textarea id="texto-usuario" placeholder="Escribe o pega aquí tu texto, o carga un archivo (.pdf, .docx, .doc, .txt). Al presionar Play se limpiarán los saltos de línea, se dividirá en párrafos por puntos y comenzará la lectura..."></textarea>
+
+        <div id="visor-contenedor" class="visor-contenedor" style="display: none;">
+            <div id="marcador-amarillo"></div>
+            <div id="visor-texto"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Configuración de Worker para PDF.js
+    if (typeof pdfjsLib !== 'undefined') {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
+
+    // Referencias DOM
+    const selectorTema = document.getElementById('selector-tema');
+    const inputArchivo = document.getElementById('input-archivo');
+    const selectorVoces = document.getElementById('selector-voces');
+    const controlVelocidad = document.getElementById('control-velocidad');
+    const valorVelocidad = document.getElementById('valor-velocidad');
+    const controlTono = document.getElementById('control-tono');
+    const valorTono = document.getElementById('valor-tono');
+    const textoUsuario = document.getElementById('texto-usuario');
+    const visorContenedor = document.getElementById('visor-contenedor');
+    const visorTexto = document.getElementById('visor-texto');
+    const marcadorAmarillo = document.getElementById('marcador-amarillo');
+    const mensajeAlerta = document.getElementById('mensaje-alerta');
+    const instruccion = document.getElementById('instruccion');
+    const progActual = document.getElementById('prog-actual');
+    const progTotal = document.getElementById('prog-total');
+    const progPorcentaje = document.getElementById('prog-porcentaje');
+    const btnReproducir = document.getElementById('btn-reproducir');
+    const btnDetener = document.getElementById('btn-detener');
+
+    // Estado de la aplicación
+    let vocesSistema = [];
+    let palabrasArray = [];
+    let bloquesTexto = [];
+    let indiceBloqueActual = 0;
+    let indicePalabraActual = 0;
+    let estaReproduciendo = false;
+    let estaPausado = false;
+    let utteranceActual = null;
+
+    // ---------------------------------------------------------
+    // 1. GESTIÓN DE TEMA VISUAL (DARK POR DEFECTO / LIGHT)
+    // ---------------------------------------------------------
+    function aplicarTema(tema) {
+        document.documentElement.setAttribute('data-theme', tema);
+        selectorTema.value = tema;
+        try {
+            localStorage.setItem('lector_tema', tema);
+        } catch (e) {}
+    }
+
+    selectorTema.addEventListener('change', (e) => {
+        aplicarTema(e.target.value);
+    });
+
+    (function inicializarTema() {
+        let temaGuardado = 'dark';
+        try {
+            const guardado = localStorage.getItem('lector_tema');
+            if (guardado === 'light' || guardado === 'dark') {
+                temaGuardado = guardado;
+            }
+        } catch (e) {}
+        aplicarTema(temaGuardado);
+    })();
+
+    // ---------------------------------------------------------
+    // 2. ALERTAS E INDICADOR DE PROGRESO
+    // ---------------------------------------------------------
+    function mostrarMensaje(texto, esInfo = false) {
+        mensajeAlerta.textContent = texto;
+        if (esInfo) {
+            mensajeAlerta.style.backgroundColor = '#16302b';
+            mensajeAlerta.style.borderColor = '#17a2b8';
+            mensajeAlerta.style.color = '#8ce99a';
+        } else {
+            mensajeAlerta.style.backgroundColor = '';
+            mensajeAlerta.style.borderColor = '';
+            mensajeAlerta.style.color = '';
+        }
+        mensajeAlerta.style.display = 'block';
+        setTimeout(() => {
+            mensajeAlerta.style.display = 'none';
+        }, 4000);
+    }
+
+    function actualizarIndicadorProgreso(actual, total) {
+        progActual.textContent = actual;
+        progTotal.textContent = total;
+        const porcentaje = total > 0 ? Math.round((actual / total) * 100) : 0;
+        progPorcentaje.textContent = `${porcentaje}%`;
+    }
+
+    // ---------------------------------------------------------
+    // 3. CARGA ROBUSTA DE VOCES (DEFAULT es-US)
+    // ---------------------------------------------------------
+    function cargarVoces() {
+        if (!('speechSynthesis' in window)) {
+            selectorVoces.innerHTML = '<option value="">Síntesis no soportada</option>';
+            return false;
+        }
+
+        const lista = window.speechSynthesis.getVoices();
+        if (!lista || lista.length === 0) {
+            return false;
+        }
+
+        vocesSistema = lista;
+        const seleccionPrevia = selectorVoces.value;
+        selectorVoces.innerHTML = '';
+
+        let indexDefault = -1;
+
+        vocesSistema.forEach((voz, index) => {
+            const opcion = document.createElement('option');
+            opcion.value = index;
+            opcion.textContent = `${voz.name} (${voz.lang})`;
+            selectorVoces.appendChild(opcion);
+
+            const langNorm = voz.lang.replace('_', '-').toLowerCase();
+            if (indexDefault === -1 && langNorm === 'es-us') {
+                indexDefault = index;
+            }
+        });
+
+        // Si no hay es-US exacto, buscar cualquier español disponible
+        if (indexDefault === -1) {
+            indexDefault = vocesSistema.findIndex(v => v.lang.toLowerCase().startsWith('es'));
+        }
+
+        if (seleccionPrevia && vocesSistema[seleccionPrevia]) {
+            selectorVoces.value = seleccionPrevia;
+        } else if (indexDefault !== -1) {
+            selectorVoces.value = indexDefault;
+        } else {
+            selectorVoces.value = 0;
+        }
+
+        return true;
+    }
+
+    // Reintentos automáticos para navegadores asíncronos (Chrome/Safari)
+    window.addEventListener('load', () => {
+        if ('speechSynthesis' in window) {
+            window.speechSynthesis.cancel();
+            cargarVoces();
+            let intentos = 0;
+            const intervaloVoces = setInterval(() => {
+                intentos++;
+                if (cargarVoces() || intentos > 25) {
+                    clearInterval(intervaloVoces);
+                }
+            }, 300);
+        }
+    });
+
+    if (typeof speechSynthesis !== 'undefined' && speechSynthesis.onvoiceschanged !== undefined) {
+        speechSynthesis.onvoiceschanged = cargarVoces;
+    }
+
+    // ---------------------------------------------------------
+    // 4. CARGA DE ARCHIVOS (.txt, .pdf, .doc, .docx)
+    // ---------------------------------------------------------
+    inputArchivo.addEventListener('change', async (event) => {
+        const archivo = event.target.files[0];
+        if (!archivo) return;
+
+        if (estaReproduciendo) {
+            detenerLectura();
+        }
+
+        const nombre = archivo.name.toLowerCase();
+        mostrarMensaje(`Procesando "${archivo.name}"...`, true);
+
+        try {
+            let textoExtraido = '';
+
+            if (nombre.endsWith('.txt')) {
+                textoExtraido = await archivo.text();
+            } else if (nombre.endsWith('.pdf')) {
+                if (typeof pdfjsLib === 'undefined') {
+                    throw new Error("El lector de PDF aún no termina de cargar. Intenta de nuevo.");
+                }
+                const arrayBuffer = await archivo.arrayBuffer();
+                const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                const paginasTexto = [];
+                for (let i = 1; i <= pdf.numPages; i++) {
+                    const page = await pdf.getPage(i);
+                    const content = await page.getTextContent();
+                    const strings = content.items.map(item => item.str);
+                    paginasTexto.push(strings.join(' '));
+                }
+                textoExtraido = paginasTexto.join(' ');
+            } else if (nombre.endsWith('.docx')) {
+                if (typeof mammoth === 'undefined') {
+                    throw new Error("El lector de DOCX aún no termina de cargar. Intenta de nuevo.");
+                }
+                const arrayBuffer = await archivo.arrayBuffer();
+                const resultado = await mammoth.extractRawText({ arrayBuffer: arrayBuffer });
+                textoExtraido = resultado.value;
+            } else if (nombre.endsWith('.doc')) {
+                const arrayBuffer = await archivo.arrayBuffer();
+                const decoder = new TextDecoder('latin1');
+                const raw = decoder.decode(arrayBuffer);
+                const coincidencias = raw.match(/[A-Za-zÀ-ÿ0-9\s.,;:¡!¿?()"'-]{15,}/g);
+                textoExtraido = coincidencias ? coincidencias.join(' ') : '';
+            } else {
+                throw new Error("Formato no compatible. Usa .txt, .pdf, .doc o .docx.");
+            }
+
+            if (!textoExtraido || textoExtraido.trim().length === 0) {
+                throw new Error("No se encontró texto legible dentro del archivo.");
+            }
+
+            textoUsuario.value = textoExtraido.trim();
+            actualizarContadorDesdeTextarea();
+            mostrarMensaje(`Archivo "${archivo.name}" cargado correctamente.`, true);
+        } catch (error) {
+            console.error("Error al procesar archivo:", error);
+            mostrarMensaje(error.message || "Error al leer el archivo.");
+        } finally {
+            inputArchivo.value = '';
+        }
+    });
+
+    // ---------------------------------------------------------
+    // 5. FORMATEO DE TEXTO Y SEPARACIÓN POR PUNTOS
+    // ---------------------------------------------------------
+    function formatearTextoCrudo(texto) {
+        // Reemplaza saltos de línea por espacio simple y colapsa espacios múltiples
+        return texto
+            .replace(/[\r\n]+/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+    }
+
+    function fragmentarTextoEnParrafos(textoLimpio) {
+        // Separa estrictamente en cada punto '.'
+        const partes = textoLimpio.split('.');
+        const bloques = [];
+        let indicePalabraGlobal = 0;
+
+        partes.forEach((parte, idx) => {
+            const trimmed = parte.trim();
+            if (trimmed.length > 0) {
+                // Volver a agregar el punto si no era el último fragmento sin punto
+                const tienePunto = idx < partes.length - 1 || textoLimpio.endsWith('.');
+                const oracionCompleta = tienePunto ? `${trimmed}.` : trimmed;
+                const palabrasFrase = oracionCompleta.split(/\s+/);
+
+                bloques.push({
+                    id: bloques.length,
+                    texto: oracionCompleta,
+                    palabras: palabrasFrase,
+                    startWordIndex: indicePalabraGlobal,
+                    wordCount: palabrasFrase.length
+                });
+
+                indicePalabraGlobal += palabrasFrase.length;
+            }
+        });
+
+        return bloques;
+    }
+
+    function actualizarContadorDesdeTextarea() {
+        const texto = textoUsuario.value.trim();
+        if (!texto) {
+            actualizarIndicadorProgreso(0, 0);
+            return;
+        }
+        const limpio = formatearTextoCrudo(texto);
+        const bloques = fragmentarTextoEnParrafos(limpio);
+        actualizarIndicadorProgreso(0, bloques.length);
+    }
+
+    textoUsuario.addEventListener('input', actualizarContadorDesdeTextarea);
+
+    // ---------------------------------------------------------
+    // 6. RENDERIZADO DE PÁRRAFOS Y RESALTADO DE PALABRAS
+    // ---------------------------------------------------------
+    function renderizarVisorTexto() {
+        visorTexto.innerHTML = '';
+
+        bloquesTexto.forEach((bloque, bIndex) => {
+            const divParrafo = document.createElement('div');
+            divParrafo.className = 'parrafo-bloque';
+            divParrafo.id = `parrafo-${bIndex}`;
+
+            divParrafo.addEventListener('click', () => {
+                hacerClicEnParrafo(bIndex);
+            });
+
+            bloque.palabras.forEach((palabra, wIdx) => {
+                const globalWordIdx = bloque.startWordIndex + wIdx;
+                const span = document.createElement('span');
+                span.id = `palabra-${globalWordIdx}`;
+                span.className = 'palabra-span';
+                span.textContent = palabra;
+
+                divParrafo.appendChild(span);
+                divParrafo.appendChild(document.createTextNode(' '));
+            });
+
+            visorTexto.appendChild(divParrafo);
+        });
+    }
+
+    function resaltarPalabra(indice) {
+        const spanPrevio = visorTexto.querySelector('.palabra-span.activa');
+        if (spanPrevio) {
+            spanPrevio.classList.remove('activa');
+        }
+
+        const parrafoPrevio = visorTexto.querySelector('.parrafo-bloque.en-lectura');
+        if (parrafoPrevio) {
+            parrafoPrevio.classList.remove('en-lectura');
+        }
+
+        const parrafoActual = document.getElementById(`parrafo-${indiceBloqueActual}`);
+        if (parrafoActual) {
+            parrafoActual.classList.add('en-lectura');
+        }
+
+        const spanActual = document.getElementById(`palabra-${indice}`);
+        if (spanActual) {
+            spanActual.classList.add('activa');
+
+            const rectSpan = spanActual.getBoundingClientRect();
+            const rectContenedor = visorContenedor.getBoundingClientRect();
+
+            const topRelativo = rectSpan.top - rectContenedor.top + visorContenedor.scrollTop;
+            const leftRelativo = rectSpan.left - rectContenedor.left + visorContenedor.scrollLeft;
+
+            marcadorAmarillo.style.display = 'block';
+            marcadorAmarillo.style.width = `${rectSpan.width + 4}px`;
+            marcadorAmarillo.style.height = `${rectSpan.height}px`;
+            marcadorAmarillo.style.top = `${topRelativo}px`;
+            marcadorAmarillo.style.left = `${leftRelativo - 2}px`;
+
+            const centroVisor = visorContenedor.clientHeight / 2;
+            visorContenedor.scrollTo({
+                top: topRelativo - centroVisor + (rectSpan.height / 2),
+                behavior: 'smooth'
+            });
+        } else {
+            marcadorAmarillo.style.display = 'none';
+        }
+    }
+
+    // ---------------------------------------------------------
+    // 7. CONTROL DE REPRODUCCIÓN DE VOZ
+    // ---------------------------------------------------------
+    controlVelocidad.addEventListener('input', () => {
+        valorVelocidad.textContent = parseFloat(controlVelocidad.value).toFixed(1) + 'x';
+    });
+
+    controlTono.addEventListener('input', () => {
+        valorTono.textContent = parseFloat(controlTono.value).toFixed(1) + 'x';
+    });
+
+    function alternarPlayPausa() {
+        if (!estaReproduciendo) {
+            const textoOriginal = textoUsuario.value.trim();
+            if (textoOriginal === "") {
+                mostrarMensaje("Por favor, introduce o carga un texto para reproducir.");
+                return;
+            }
+
+            if (vocesSistema.length === 0) {
+                cargarVoces();
+            }
+
+            // Paso 1: Reemplazar saltos de línea por espacio simple
+            const textoFormateado = formatearTextoCrudo(textoOriginal);
+
+            // Paso 2: Separar en párrafos por puntos '.'
+            bloquesTexto = fragmentarTextoEnParrafos(textoFormateado);
+            if (bloquesTexto.length === 0) {
+                mostrarMensaje("No hay contenido válido para leer.");
+                return;
+            }
+
+            // Actualizar textarea con el texto limpio separado por párrafos
+            textoUsuario.value = bloquesTexto.map(b => b.texto).join('\n\n');
+            palabrasArray = bloquesTexto.flatMap(b => b.palabras);
+
+            indiceBloqueActual = 0;
+            indicePalabraActual = 0;
+
+            textoUsuario.style.display = 'none';
+            visorContenedor.style.display = 'block';
+            instruccion.style.display = 'block';
+
+            renderizarVisorTexto();
+
+            // Paso 3: Comenzar lectura en voz desde el primer párrafo
+            reproducirBloque(indiceBloqueActual);
+        } else if (estaPausado) {
+            window.speechSynthesis.resume();
+            estaPausado = false;
+            actualizarEstadoBotonPlayPausa();
+        } else {
+            window.speechSynthesis.pause();
+            estaPausado = true;
+            actualizarEstadoBotonPlayPausa();
+        }
+    }
+
+    function hacerClicEnParrafo(indexBloque) {
+        if (!bloquesTexto || bloquesTexto.length === 0) return;
+        reproducirBloque(indexBloque);
+    }
+
+    function reproducirBloque(indexBloque) {
+        limpiarYReiniciarMotorVoz();
+
+        if (indexBloque >= bloquesTexto.length) {
+            detenerLectura();
+            return;
+        }
+
+        indiceBloqueActual = indexBloque;
+        const bloque = bloquesTexto[indexBloque];
+        indicePalabraActual = bloque.startWordIndex;
+
+        actualizarIndicadorProgreso(indexBloque + 1, bloquesTexto.length);
+        resaltarPalabra(indicePalabraActual);
+
+        utteranceActual = crearMensajeUtterance(bloque.texto);
+
+        utteranceActual.onboundary = (event) => {
+            if (event.name === 'word') {
+                const caracteresPrevios = bloque.texto.substring(0, event.charIndex);
+                const palabrasLeidasEnBloque = caracteresPrevios.split(/\s+/).filter(Boolean).length;
+                indicePalabraActual = bloque.startWordIndex + palabrasLeidasEnBloque;
+                resaltarPalabra(indicePalabraActual);
+            }
+        };
+
+        utteranceActual.onend = () => {
+            if (estaReproduciendo && !estaPausado) {
+                if (indiceBloqueActual + 1 < bloquesTexto.length) {
+                    reproducirBloque(indiceBloqueActual + 1);
+                } else {
+                    detenerLectura();
+                }
+            }
+        };
+
+        utteranceActual.onerror = (e) => {
+            if (e.error !== 'interrupted' && e.error !== 'canceled') {
+                console.error("Error en síntesis de voz:", e);
+            }
+        };
+
+        setTimeout(() => {
+            window.speechSynthesis.speak(utteranceActual);
+        }, 20);
+
+        estaReproduciendo = true;
+        estaPausado = false;
+        actualizarEstadoBotonPlayPausa();
+        btnDetener.disabled = false;
+    }
+
+    function crearMensajeUtterance(texto) {
+        const ut = new SpeechSynthesisUtterance(texto);
+        const vozIndex = selectorVoces.value;
+
+        if (vozIndex !== "" && vocesSistema[vozIndex]) {
+            ut.voice = vocesSistema[vozIndex];
+            ut.lang = vocesSistema[vozIndex].lang;
+        } else {
+            ut.lang = 'es-US';
+        }
+
+        ut.rate = parseFloat(controlVelocidad.value);
+        ut.pitch = parseFloat(controlTono.value);
+        return ut;
+    }
+
+    function limpiarYReiniciarMotorVoz() {
+        if ('speechSynthesis' in window) {
+            if (window.speechSynthesis.paused) {
+                window.speechSynthesis.resume();
+            }
+            window.speechSynthesis.cancel();
+        }
+
+        if (utteranceActual) {
+            utteranceActual.onboundary = null;
+            utteranceActual.onend = null;
+            utteranceActual.onerror = null;
+            utteranceActual = null;
+        }
+    }
+
+    function detenerLectura() {
+        limpiarYReiniciarMotorVoz();
+
+        estaReproduciendo = false;
+        estaPausado = false;
+        indiceBloqueActual = 0;
+        indicePalabraActual = 0;
+
+        actualizarIndicadorProgreso(0, bloquesTexto.length);
+        marcadorAmarillo.style.display = 'none';
+
+        visorContenedor.style.display = 'none';
+        instruccion.style.display = 'none';
+        textoUsuario.style.display = 'block';
+
+        actualizarEstadoBotonPlayPausa();
+        btnDetener.disabled = true;
+    }
+
+    function saltarTiempo(segundos) {
+        if (palabrasArray.length === 0 || bloquesTexto.length === 0) return;
+
+        const velocidad = parseFloat(controlVelocidad.value);
+        const factorPalabrasPorSegundo = 3 * velocidad;
+        const deltaPalabras = Math.round(segundos * factorPalabrasPorSegundo);
+        let nuevoIndicePalabra = indicePalabraActual + deltaPalabras;
+
+        if (nuevoIndicePalabra < 0) nuevoIndicePalabra = 0;
+        if (nuevoIndicePalabra >= palabrasArray.length) nuevoIndicePalabra = palabrasArray.length - 1;
+
+        let bloqueObjetivo = 0;
+        for (let i = 0; i < bloquesTexto.length; i++) {
+            if (nuevoIndicePalabra >= bloquesTexto[i].startWordIndex) {
+                bloqueObjetivo = i;
+            } else {
+                break;
+            }
+        }
+
+        indicePalabraActual = nuevoIndicePalabra;
+        resaltarPalabra(indicePalabraActual);
+
+        const estabaPausadoAntes = estaPausado;
+        reproducirBloque(bloqueObjetivo);
+        if (estabaPausadoAntes) {
+            setTimeout(() => {
+                window.speechSynthesis.pause();
+                estaPausado = true;
+                actualizarEstadoBotonPlayPausa();
+            }, 30);
+        }
+    }
+
+    function actualizarEstadoBotonPlayPausa() {
+        if (!estaReproduciendo || estaPausado) {
+            btnReproducir.textContent = 'Play';
+            btnReproducir.className = 'btn-play';
+        } else {
+            btnReproducir.textContent = 'Pausa';
+            btnReproducir.className = 'btn-pause';
+        }
+    }
+</script>
+
+</body>
+</html>
